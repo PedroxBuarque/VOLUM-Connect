@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { colors, shadow } from '../theme';
+import { colors, shadow, typography } from '../theme';
 
 type Tone = 'primary' | 'warning' | 'danger';
 
@@ -45,8 +45,20 @@ const styles = StyleSheet.create({
     ...shadow,
   },
   top: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 },
-  label: { flex: 1, fontSize: 13, fontWeight: '600', color: colors.muted },
+  label: {
+    flex: 1,
+    fontFamily: typography.body,
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.muted,
+  },
   iconBox: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  value: { fontSize: 36, fontWeight: '800', color: colors.text, marginTop: 12 },
-  hint: { fontSize: 12, color: colors.muted, marginTop: 4 },
+  value: {
+    fontFamily: typography.heading,
+    fontSize: 36,
+    fontWeight: '800',
+    color: colors.navy,
+    marginTop: 12,
+  },
+  hint: { fontFamily: typography.body, fontSize: 12, color: colors.muted, marginTop: 4 },
 });

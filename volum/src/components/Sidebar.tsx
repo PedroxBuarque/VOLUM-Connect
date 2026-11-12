@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, Image, Pressable, StyleSheet } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { colors } from '../theme';
+import { colors, shadow, typography } from '../theme';
 
 export const MENU_ITEMS = [
   { key: 'overview', label: 'Visão geral', icon: 'home' },
@@ -79,14 +79,16 @@ export default function Sidebar({ active, onSelect, alertCount = 0 }: Props) {
 const styles = StyleSheet.create({
   container: {
     width: 260,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.card,
     borderRightWidth: 1,
-    borderRightColor: '#E5E7EB',
+    borderRightColor: colors.border,
     paddingHorizontal: 16,
     paddingTop: 14,
     paddingBottom: 24,
     justifyContent: 'space-between',
+    ...shadow,
   },
+  // Preservar dimensões e transformação da logo conforme solicitado.
   logoBox: {
     width: '100%',
     height: 160,
@@ -109,10 +111,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: 12,
   },
-  itemActive: { backgroundColor: '#ECFDF5' },
-  itemHover: { backgroundColor: colors.bg },
-  itemText: { flex: 1, fontSize: 14, fontWeight: '500', color: colors.muted },
-  itemTextActive: { color: '#0F766E', fontWeight: '700' },
+  itemActive: { backgroundColor: colors.primarySoft },
+  itemHover: { backgroundColor: colors.primarySoft },
+  itemText: {
+    flex: 1,
+    fontFamily: typography.body,
+    fontSize: 14,
+    fontWeight: '500',
+    color: colors.muted,
+  },
+  itemTextActive: { color: colors.primary, fontWeight: '700' },
   badge: {
     minWidth: 22,
     height: 22,
@@ -122,16 +130,31 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  badgeText: { color: '#FFFFFF', fontSize: 11, fontWeight: '800' },
+  badgeText: { color: colors.white, fontSize: 11, fontWeight: '800' },
   statusCard: {
-    backgroundColor: colors.dark,
+    backgroundColor: colors.navy,
     borderRadius: 12,
     padding: 16,
     gap: 4,
   },
-  statusTitle: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
-  statusText: { color: '#94A3B8', fontSize: 12, lineHeight: 17 },
+  statusTitle: {
+    color: colors.white,
+    fontFamily: typography.heading,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  statusText: {
+    color: colors.dustyBlue,
+    fontFamily: typography.body,
+    fontSize: 12,
+    lineHeight: 17,
+  },
   onlineRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10 },
-  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#22C55E' },
-  onlineText: { color: '#22C55E', fontSize: 11, fontWeight: '800', letterSpacing: 1 },
+  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.onlineIndicator },
+  onlineText: {
+    color: colors.onlineIndicator,
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1,
+  },
 });

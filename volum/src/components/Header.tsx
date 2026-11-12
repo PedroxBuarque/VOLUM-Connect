@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, TextInput, StyleSheet } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { colors } from '../theme';
+import { colors, shadow, typography } from '../theme';
 
 type Props = {
   search: string;
@@ -60,23 +60,38 @@ const styles = StyleSheet.create({
     gap: 10,
     backgroundColor: colors.card,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.primarySoft,
     borderRadius: 999,
     paddingHorizontal: 18,
     height: 46,
+    ...shadow,
   },
-  input: { flex: 1, fontSize: 14, color: colors.text },
+  input: { flex: 1, fontFamily: typography.body, fontSize: 14, color: colors.text },
   right: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   unitInfo: { alignItems: 'flex-end' },
-  unitName: { fontSize: 14, fontWeight: '700', color: colors.text },
-  unitSub: { fontSize: 12, color: colors.muted, marginTop: 2 },
+  unitName: {
+    fontFamily: typography.heading,
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.navy,
+  },
+  unitSub: {
+    fontFamily: typography.body,
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.navy,
+    marginTop: 2,
+  },
   avatar: {
     width: 42,
     height: 42,
     borderRadius: 21,
     backgroundColor: colors.primary,
+    borderWidth: 2,
+    borderColor: colors.primarySoft,
     alignItems: 'center',
     justifyContent: 'center',
+    ...shadow,
   },
-  avatarText: { color: '#fff', fontWeight: '800', fontSize: 13 },
+  avatarText: { color: colors.white, fontWeight: '800', fontSize: 13 },
 });

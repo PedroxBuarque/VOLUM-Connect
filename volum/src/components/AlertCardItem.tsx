@@ -1,13 +1,13 @@
 import React from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { colors } from '../theme';
+import { colors, typography } from '../theme';
 import type { AlertItem, AlertSeverity } from '../mock/data';
 
 const SEVERITY: Record<AlertSeverity, { color: string; bg: string; icon: string }> = {
   critical: { color: colors.danger, bg: colors.dangerSoft, icon: 'alert-octagon' },
   warning: { color: colors.warning, bg: colors.warningSoft, icon: 'alert-triangle' },
-  offline: { color: colors.gray, bg: colors.graySoft, icon: 'wifi-off' },
+  offline: { color: colors.dustyBlue, bg: colors.graySoft, icon: 'wifi-off' },
 };
 
 type Props = {
@@ -64,10 +64,10 @@ const styles = StyleSheet.create({
   },
   iconBox: { width: 40, height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   body: { flex: 1 },
-  title: { fontSize: 14, fontWeight: '700', color: colors.text },
-  detail: { fontSize: 12, color: colors.muted, marginTop: 2 },
+  title: { fontFamily: typography.heading, fontSize: 14, fontWeight: '700', color: colors.navy },
+  detail: { fontFamily: typography.body, fontSize: 12, color: colors.muted, marginTop: 2 },
   timeRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 },
-  time: { fontSize: 11, color: colors.muted, fontWeight: '600' },
+  time: { fontFamily: typography.body, fontSize: 11, color: colors.muted, fontWeight: '600' },
   check: {
     width: 34,
     height: 34,

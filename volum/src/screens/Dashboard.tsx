@@ -8,7 +8,7 @@ import KpiCard from '../components/KpiCard';
 import DeviceListItem, { COLS } from '../components/DeviceListItem';
 import AlertCardItem from '../components/AlertCardItem';
 import { kpis, devices, alerts as initialAlerts } from '../mock/data';
-import { colors, shadow } from '../theme';
+import { colors, shadow, typography } from '../theme';
 
 function formatToday() {
   const s = new Date().toLocaleDateString('pt-BR', {
@@ -45,7 +45,7 @@ export default function Dashboard() {
     );
   }, [search]);
 
-  // O KPI de alertas acompanha os alertas dispensados na tela
+  // O KPI de alertas acompanha os alertas dispensados na tela.
   const kpiList = kpis.map((k) =>
     k.id === 'alerts'
       ? {
@@ -113,7 +113,7 @@ export default function Dashboard() {
 
             {activeAlerts.length === 0 ? (
               <View style={styles.emptyAlerts}>
-                <Feather name="check-circle" size={28} color={colors.success} />
+                <Feather name="check-circle" size={28} color={colors.primary} />
                 <Text style={styles.emptyAlertsText}>Nenhum alerta pendente</Text>
               </View>
             ) : (
@@ -130,11 +130,29 @@ export default function Dashboard() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, flexDirection: 'row', backgroundColor: colors.bg },
-  main: { flex: 1 },
+  main: { flex: 1, backgroundColor: colors.bg },
   mainContent: { padding: 32, paddingBottom: 48 },
-  date: { fontSize: 13, color: '#0F766E', fontWeight: '700' },
-  title: { fontSize: 30, fontWeight: '800', color: colors.text, marginTop: 4 },
-  subtitle: { fontSize: 14, color: colors.muted, marginTop: 4, marginBottom: 24 },
+  date: {
+    fontFamily: typography.body,
+    fontSize: 13,
+    color: colors.white,
+    fontWeight: '600',
+  },
+  title: {
+    fontFamily: typography.heading,
+    fontSize: 30,
+    fontWeight: '800',
+    color: colors.navy,
+    marginTop: 4,
+  },
+  subtitle: {
+    fontFamily: typography.body,
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.white,
+    marginTop: 4,
+    marginBottom: 24,
+  },
 
   kpiRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 16, marginBottom: 20 },
 
@@ -146,8 +164,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 14,
   },
-  panelTitle: { fontSize: 16, fontWeight: '700', color: colors.text },
-  panelSub: { fontSize: 12, color: colors.muted, fontWeight: '600' },
+  panelTitle: {
+    fontFamily: typography.heading,
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.navy,
+  },
+  panelSub: { fontFamily: typography.body, fontSize: 12, color: colors.muted, fontWeight: '600' },
 
   tableHead: {
     flexDirection: 'row',
@@ -155,9 +178,16 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  th: { fontSize: 11, fontWeight: '700', color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.5 },
+  th: {
+    fontFamily: typography.body,
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.muted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
   empty: { textAlign: 'center', color: colors.muted, paddingVertical: 32 },
 
   emptyAlerts: { alignItems: 'center', gap: 10, paddingVertical: 36 },
-  emptyAlertsText: { fontSize: 13, color: colors.muted, fontWeight: '600' },
+  emptyAlertsText: { fontFamily: typography.body, fontSize: 13, color: colors.muted, fontWeight: '600' },
 });

@@ -7,14 +7,14 @@ import type { Device, DeviceStatus } from '../mock/data';
 export const COLS = { device: 1.5, level: 1.6, flow: 0.8, status: 0.9 };
 
 const STATUS: Record<DeviceStatus, { label: string; dot: string; bg: string; fg: string }> = {
-  online: { label: 'Online', dot: colors.success, bg: colors.successSoft, fg: '#047857' },
-  attention: { label: 'Atenção', dot: colors.warning, bg: colors.warningSoft, fg: '#92400E' },
-  offline: { label: 'Offline', dot: colors.gray, bg: colors.graySoft, fg: '#4B5563' },
+  online: { label: 'Online', dot: colors.primary, bg: colors.primarySoft, fg: colors.primary },
+  attention: { label: 'Atenção', dot: colors.warning, bg: colors.warningSoft, fg: colors.warning },
+  offline: { label: 'Offline', dot: colors.dustyBlue, bg: colors.graySoft, fg: colors.dustyBlue },
 };
 
 function barColor(device: Device) {
-  if (device.status === 'offline') return colors.gray;
-  return device.level > 50 ? colors.success : colors.warning;
+  if (device.status === 'offline') return colors.dustyBlue;
+  return device.level >= 50 ? colors.primary : colors.warning;
 }
 
 export default function DeviceListItem({ device }: { device: Device }) {
@@ -43,7 +43,7 @@ export default function DeviceListItem({ device }: { device: Device }) {
         </Text>
       </View>
 
-      <Text style={[styles.flow, { flex: COLS.flow }, isOffline && { color: colors.gray }]}>
+      <Text style={[styles.flow, { flex: COLS.flow }, isOffline && { color: colors.dustyBlue }]}>
         {isOffline ? '—' : `${device.flow} ml/h`}
       </Text>
 
@@ -65,12 +65,12 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  id: { fontSize: 14, fontWeight: '700', color: colors.text },
+  id: { fontSize: 14, fontWeight: '700', color: colors.navy },
   patient: { fontSize: 12, color: colors.muted, marginTop: 2 },
   track: { height: 8, borderRadius: 4, backgroundColor: colors.border, overflow: 'hidden' },
   fill: { height: '100%', borderRadius: 4 },
   levelText: { fontSize: 11, color: colors.muted, marginTop: 6 },
-  flow: { fontSize: 14, fontWeight: '600', color: colors.text },
+  flow: { fontSize: 14, fontWeight: '600', color: colors.navy },
   tag: {
     flexDirection: 'row',
     alignItems: 'center',
