@@ -20,42 +20,40 @@ export interface BagSlot {
   isMain: boolean;
   substance: string;
   volumeMl: number;
-  level: number; // 0 a 100
-  durationMinutes: number; // tempo escolhido para descida
+  level: number;
+  durationMinutes: number;
   remainingSeconds: number;
   status: 'active' | 'queued' | 'low' | 'empty';
 }
 
-type Props = {
-  devices?: Device[];
-  selectedDeviceId?: string;
-  onSelectDeviceId?: (id: string) => void;
-};
-
-function formatSeconds(totalSec: number): string {
-  const safe = Math.max(0, Math.floor(totalSec));
-  const h = Math.floor(safe / 3600);
-  const m = Math.floor((safe % 3600) / 60);
-  const s = safe % 60;
-  return [h, m, s].map((n) => String(n).padStart(2, '0')).join(':');
-}
-
-function buildInitialBags(device: any): BagSlot[] {
-  const mainLevel = Number(device?.level ?? 78);
-  const mainSolution = device?.solution ?? 'Soro fisiológico 500 ml';
-  const mainDuration = 120; // 2h padrão
+export function buildInitialBags(device: any): BagSlot[] {
+  const parsedLevel = parseFloat(String(device?.level ?? device?.bagLevel ?? 78));
+  const mainLevel = Number.isFinite(parsedLevel)
+    ? Math.max(0, Math.min(100, Math.round(parsedLevel)))
+    : 78;
+  const mainSolution =
+    device?.solution ?? device?.bag ?? device?.fluid ?? 'Soro fisiológico 500 ml';
+  const isOffline = String(device?.status ?? '').toLowerCase() === 'offline';
+  const mainDuration = 120;
 
   return [
     {
       id: 'main',
       slotLabel: 'Bolsa Principal (Reservatório)',
       isMain: true,
-      substance: mainSolution,
+      substance: String(mainSolution),
       volumeMl: 1000,
-      level: mainLevel,
+      level: isOffline ? 0 : mainLevel,
       durationMinutes: mainDuration,
-      remainingSeconds: Math.round((mainLevel / 100) * mainDuration * 60),
-      status: mainLevel === 0 ? 'empty' : mainLevel <= 20 ? 'low' : 'active',
+      remainingSeconds: isOffline
+        ? 0
+        : Math.round((mainLevel / 100) * mainDuration * 60),
+      status:
+        isOffline || mainLevel === 0
+          ? 'empty'
+          : mainLevel <= 20
+          ? 'low'
+          : 'active',
     },
     {
       id: 'sub-1',
@@ -74,29 +72,44 @@ function buildInitialBags(device: any): BagSlot[] {
       isMain: false,
       substance: 'Cloreto de Potássio 250 ml',
       volumeMl: 250,
-      level: 18,
+      level: 65,
       durationMinutes: 60,
-      remainingSeconds: 11 * 60,
-      status: 'low',
-    },
-    {
-      id: 'sub-3',
-      slotLabel: 'Bolsa Menor 03',
-      isMain: false,
-      substance: 'Antibiótico IV 100 ml',
-      volumeMl: 100,
-      level: 0,
-      durationMinutes: 30,
-      remainingSeconds: 0,
-      status: 'empty',
+      remainingSeconds: 39 * 60,
+      status: 'queued',
     },
   ];
+}
+
+type Props = {
+  devices?: Device[];
+  selectedDeviceId?: string;
+  onSelectDeviceId?: (id: string) => void;
+  bagsByDevice: Record<string, BagSlot[]>;
+  onUpdateBags: (deviceId: string, updater: (prev: BagSlot[]) => BagSlot[]) => void;
+  isRunning: boolean;
+  onToggleRunning: () => void;
+  alertThreshold: number;
+  onChangeAlertThreshold: (next: number) => void;
+};
+
+function formatSeconds(totalSec: number): string {
+  const safe = Math.max(0, Math.floor(Number.isFinite(totalSec) ? totalSec : 0));
+  const h = Math.floor(safe / 3600);
+  const m = Math.floor((safe % 3600) / 60);
+  const s = safe % 60;
+  return [h, m, s].map((n) => String(n).padStart(2, '0')).join(':');
 }
 
 export default function BagsScreen({
   devices = mockDevices,
   selectedDeviceId,
   onSelectDeviceId,
+  bagsByDevice,
+  onUpdateBags,
+  isRunning,
+  onToggleRunning,
+  alertThreshold,
+  onChangeAlertThreshold,
 }: Props) {
   const { width } = useWindowDimensions();
   const isWide = width >= 1100;
@@ -111,17 +124,11 @@ export default function BagsScreen({
     [devices, activeId]
   );
 
-  // Armazena o estado das bolsas por dispositivo
-  const [bagsByDevice, setBagsByDevice] = useState<Record<string, BagSlot[]>>({});
   const [selectedBagId, setSelectedBagId] = useState<string>('main');
-  const [isRunning, setIsRunning] = useState<boolean>(true);
-  const [alertThreshold, setAlertThreshold] = useState<number>(15); // % limiar de alerta
-
-  // Controles de tempo de descida
   const [hoursInput, setHoursInput] = useState<string>('2');
   const [minutesInput, setMinutesInput] = useState<string>('00');
+  const [justApplied, setJustApplied] = useState<boolean>(false);
 
-  // Modal para adicionar bolsa menor (até 5)
   const [addModalVisible, setAddModalVisible] = useState(false);
   const [newSubstance, setNewSubstance] = useState('');
   const [newVolume, setNewVolume] = useState('250');
@@ -129,65 +136,27 @@ export default function BagsScreen({
 
   const bags: BagSlot[] = useMemo(() => {
     if (!currentDevice) return [];
-    if (bagsByDevice[currentDevice.id]) return bagsByDevice[currentDevice.id];
-    return buildInitialBags(currentDevice);
+    return bagsByDevice[currentDevice.id] || buildInitialBags(currentDevice);
   }, [bagsByDevice, currentDevice]);
 
   const mainBag = bags.find((b) => b.isMain) || bags[0];
   const minorBags = bags.filter((b) => !b.isMain);
   const selectedBag = bags.find((b) => b.id === selectedBagId) || mainBag;
 
-  const updateDeviceBags = (updater: (prev: BagSlot[]) => BagSlot[]) => {
+  const updateCurrentBags = (updater: (prev: BagSlot[]) => BagSlot[]) => {
     if (!currentDevice) return;
-    setBagsByDevice((prev) => {
-      const current = prev[currentDevice.id] || buildInitialBags(currentDevice);
-      return { ...prev, [currentDevice.id]: updater(current) };
-    });
+    onUpdateBags(currentDevice.id, updater);
   };
 
-  // Sincroniza inputs de hora/minuto ao trocar a bolsa selecionada
   useEffect(() => {
     if (!selectedBag) return;
     const h = Math.floor(selectedBag.durationMinutes / 60);
     const m = selectedBag.durationMinutes % 60;
     setHoursInput(String(h));
     setMinutesInput(String(m).padStart(2, '0'));
+    setJustApplied(false);
   }, [selectedBag?.id, selectedBag?.durationMinutes]);
 
-  // Simulação em tempo real da descida da bolsa ativa
-  useEffect(() => {
-    if (!isRunning) return;
-    const timer = setInterval(() => {
-      updateDeviceBags((list) =>
-        list.map((bag) => {
-          if (bag.status !== 'active' && bag.status !== 'low') return bag;
-          if (bag.remainingSeconds <= 0 || bag.level <= 0) {
-            return { ...bag, remainingSeconds: 0, level: 0, status: 'empty' };
-          }
-          const nextSec = bag.remainingSeconds - 1;
-          const totalSec = Math.max(1, bag.durationMinutes * 60);
-          const nextLevel = Math.max(0, Math.round((nextSec / totalSec) * 100));
-          const nextStatus =
-            nextLevel === 0
-              ? 'empty'
-              : nextLevel <= alertThreshold
-              ? 'low'
-              : 'active';
-
-          return {
-            ...bag,
-            remainingSeconds: nextSec,
-            level: nextLevel,
-            status: nextStatus,
-          };
-        })
-      );
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, [isRunning, alertThreshold, currentDevice?.id]);
-
-  // Alertas automáticos gerados pelas bolsas do dispositivo atual
   const bagAlerts = bags.filter(
     (b) => b.status === 'low' || b.status === 'empty'
   );
@@ -198,27 +167,52 @@ export default function BagsScreen({
     setSelectedBagId('main');
   };
 
-  const handleApplyTimer = () => {
-    if (!selectedBag) return;
+  const draftMinutes = useMemo(() => {
     const h = Math.max(0, parseInt(hoursInput || '0', 10) || 0);
     const m = Math.max(0, Math.min(59, parseInt(minutesInput || '0', 10) || 0));
-    const totalMinutes = Math.max(1, h * 60 + m);
+    return Math.max(1, h * 60 + m);
+  }, [hoursInput, minutesInput]);
 
-    updateDeviceBags((list) =>
-      list.map((b) =>
-        b.id === selectedBag.id
-          ? {
-              ...b,
-              durationMinutes: totalMinutes,
-              remainingSeconds: Math.round((b.level / 100) * totalMinutes * 60),
-            }
-          : b
-      )
+  const hasPendingTime = Boolean(
+    selectedBag && draftMinutes !== selectedBag.durationMinutes
+  );
+
+  const handleApplyTimer = () => {
+    if (!selectedBag) return;
+    const safeMinutes = draftMinutes;
+
+    updateCurrentBags((list) =>
+      list.map((b) => {
+        if (b.id !== selectedBag.id) return b;
+        const restoredLevel = b.level === 0 ? 100 : b.level;
+        const nextStatus =
+          b.status === 'empty'
+            ? b.isMain
+              ? 'active'
+              : 'queued'
+            : restoredLevel <= alertThreshold &&
+              (b.status === 'active' || b.status === 'low')
+            ? 'low'
+            : b.status === 'low' && restoredLevel > alertThreshold
+            ? 'active'
+            : b.status;
+
+        return {
+          ...b,
+          level: restoredLevel,
+          durationMinutes: safeMinutes,
+          remainingSeconds: safeMinutes * 60,
+          status: nextStatus,
+        };
+      })
     );
+
+    setJustApplied(true);
+    setTimeout(() => setJustApplied(false), 2000);
   };
 
   const handleSetBagActive = (bagId: string) => {
-    updateDeviceBags((list) =>
+    updateCurrentBags((list) =>
       list.map((b) => {
         if (b.id === bagId) {
           return {
@@ -233,11 +227,11 @@ export default function BagsScreen({
       })
     );
     setSelectedBagId(bagId);
-    setIsRunning(true);
+    if (!isRunning) onToggleRunning();
   };
 
   const handleRefillBag = (bagId: string) => {
-    updateDeviceBags((list) =>
+    updateCurrentBags((list) =>
       list.map((b) =>
         b.id === bagId
           ? {
@@ -254,12 +248,12 @@ export default function BagsScreen({
   const handleAddMinorBag = () => {
     if (minorBags.length >= 5 || !newSubstance.trim()) return;
     const nextIndex = minorBags.length + 1;
-    const dur = Math.max(5, parseInt(newDuration || '60', 10) || 60);
+    const dur = Math.max(1, parseInt(newDuration || '60', 10) || 60);
     const vol = Math.max(10, parseInt(newVolume || '250', 10) || 250);
 
     const created: BagSlot = {
       id: `sub-${Date.now()}`,
-      slotLabel: `Bolsa Menor 0${nextIndex}`,
+      slotLabel: `Bolsa Menor ${String(nextIndex).padStart(2, '0')}`,
       isMain: false,
       substance: newSubstance.trim(),
       volumeMl: vol,
@@ -269,10 +263,29 @@ export default function BagsScreen({
       status: 'queued',
     };
 
-    updateDeviceBags((list) => [...list, created]);
+    updateCurrentBags((list) => [...list, created]);
     setSelectedBagId(created.id);
     setNewSubstance('');
     setAddModalVisible(false);
+  };
+
+  const handleDeleteMinorBag = (bagId: string) => {
+    updateCurrentBags((list) => {
+      const remaining = list.filter((b) => b.id !== bagId);
+      let minorCounter = 0;
+      return remaining.map((b) => {
+        if (b.isMain) return b;
+        minorCounter += 1;
+        return {
+          ...b,
+          slotLabel: `Bolsa Menor ${String(minorCounter).padStart(2, '0')}`,
+        };
+      });
+    });
+
+    if (selectedBagId === bagId) {
+      setSelectedBagId('main');
+    }
   };
 
   const getStatusMeta = (status: BagSlot['status']) => {
@@ -280,42 +293,41 @@ export default function BagsScreen({
       case 'active':
         return {
           label: 'Em descida',
-          bg: colors.primarySoft,
-          color: colors.primary,
-          bar: colors.primary,
+          bg: colors.primarySoft || '#E0F2FE',
+          color: colors.primary || '#0284C7',
+          bar: colors.primary || '#0284C7',
         };
       case 'low':
         return {
           label: 'Acabando',
-          bg: colors.warningSoft,
-          color: colors.warning,
-          bar: colors.warning,
+          bg: colors.warningSoft || '#FEF3C7',
+          color: colors.warning || '#D97706',
+          bar: colors.warning || '#D97706',
         };
       case 'empty':
         return {
           label: 'Finalizada',
-          bg: colors.dangerSoft,
-          color: colors.danger,
-          bar: colors.danger,
+          bg: colors.dangerSoft || '#FEE2E2',
+          color: colors.danger || '#DC2626',
+          bar: colors.danger || '#DC2626',
         };
       case 'queued':
       default:
         return {
           label: 'Em espera',
           bg: '#F1F5F9',
-          color: colors.muted,
-          bar: colors.dustyBlue,
+          color: colors.muted || '#64748B',
+          bar: (colors as any).dustyBlue || '#94A3B8',
         };
     }
   };
 
   const calculatedFlow = selectedBag
-    ? Math.round(selectedBag.volumeMl / Math.max(0.1, selectedBag.durationMinutes / 60))
+    ? Math.round(selectedBag.volumeMl / Math.max(0.05, draftMinutes / 60))
     : 0;
 
   return (
     <View style={styles.wrapper}>
-      {/* Cabeçalho da Página */}
       <View style={styles.pageHeader}>
         <Text style={styles.dateText}>Controle de Infusão • Arduino VOLUM</Text>
         <Text style={styles.pageTitle}>Bolsas e Tempo de Descida</Text>
@@ -324,9 +336,8 @@ export default function BagsScreen({
         </Text>
       </View>
 
-      {/* Seletor Rápido de Dispositivo */}
       <View style={styles.deviceSelectorBar}>
-        {devices.slice(0, 6).map((dev) => {
+        {devices.map((dev) => {
           const selected = dev.id === activeId;
           return (
             <Pressable
@@ -358,7 +369,6 @@ export default function BagsScreen({
         })}
       </View>
 
-      {/* Banner de Aviso ao Médico quando alguma bolsa está acabando ou acabou */}
       {bagAlerts.length > 0 && (
         <View style={styles.alertBanner}>
           <View style={styles.alertBannerLeft}>
@@ -385,9 +395,7 @@ export default function BagsScreen({
         </View>
       )}
 
-      {/* Grid Principal: Esquerda (1 Bolsa Maior + até 5 Menores) | Direita (Controle de Tempo) */}
       <View style={[styles.grid, !isWide && { flexDirection: 'column' }]}>
-        {/* COLUNA ESQUERDA: Estrutura Física do Aparelho VOLUM */}
         <View style={[styles.panel, isWide ? { flex: 1.7 } : { width: '100%' }]}>
           <View style={styles.panelHeader}>
             <View>
@@ -410,7 +418,6 @@ export default function BagsScreen({
             )}
           </View>
 
-          {/* BOLSA PRINCIPAL (MAIOR) */}
           {mainBag && (
             <Pressable
               onPress={() => setSelectedBagId(mainBag.id)}
@@ -479,91 +486,107 @@ export default function BagsScreen({
             </Pressable>
           )}
 
-          {/* BOLSAS MENORES (ATÉ 5 SLOTS) */}
           <Text style={styles.minorSectionTitle}>
             Bolsas Menores ({minorBags.length}/5)
           </Text>
 
-          <View style={styles.minorGrid}>
-            {minorBags.map((bag) => {
-              const meta = getStatusMeta(bag.status);
-              const isSelected = selectedBag?.id === bag.id;
+          {minorBags.length === 0 ? (
+            <Text style={styles.emptyMinorText}>
+              Nenhuma bolsa menor conectada. Clique em "Adicionar bolsa menor" acima.
+            </Text>
+          ) : (
+            <View style={styles.minorGrid}>
+              {minorBags.map((bag) => {
+                const meta = getStatusMeta(bag.status);
+                const isSelected = selectedBag?.id === bag.id;
 
-              return (
-                <Pressable
-                  key={bag.id}
-                  onPress={() => setSelectedBagId(bag.id)}
-                  style={[
-                    styles.minorCard,
-                    isSelected && styles.bagCardSelected,
-                  ]}
-                >
-                  <View style={styles.minorCardHeader}>
-                    <Text style={styles.minorSlot}>{bag.slotLabel}</Text>
-                    <View style={[styles.badge, { backgroundColor: meta.bg }]}>
-                      <Text style={[styles.badgeText, { color: meta.color }]}>
-                        {meta.label}
-                      </Text>
+                return (
+                  <Pressable
+                    key={bag.id}
+                    onPress={() => setSelectedBagId(bag.id)}
+                    style={[
+                      styles.minorCard,
+                      isSelected && styles.bagCardSelected,
+                    ]}
+                  >
+                    <View style={styles.minorCardHeader}>
+                      <Text style={styles.minorSlot}>{bag.slotLabel}</Text>
+                      <View style={styles.minorHeaderRight}>
+                        <View style={[styles.badge, { backgroundColor: meta.bg }]}>
+                          <Text style={[styles.badgeText, { color: meta.color }]}>
+                            {meta.label}
+                          </Text>
+                        </View>
+                        <Pressable
+                          onPress={(e) => {
+                            e.stopPropagation?.();
+                            handleDeleteMinorBag(bag.id);
+                          }}
+                          style={styles.deleteBtn}
+                          hitSlop={8}
+                        >
+                          <Feather name="trash-2" size={14} color={colors.danger} />
+                        </Pressable>
+                      </View>
                     </View>
-                  </View>
 
-                  <Text style={styles.minorSubstance} numberOfLines={1}>
-                    {bag.substance} • {bag.volumeMl} ml
-                  </Text>
-
-                  <View style={styles.progressRow}>
-                    <View style={styles.track}>
-                      <View
-                        style={[
-                          styles.fill,
-                          { width: `${bag.level}%`, backgroundColor: meta.bar },
-                        ]}
-                      />
-                    </View>
-                    <Text style={styles.percentText}>{bag.level}%</Text>
-                  </View>
-
-                  <View style={styles.minorActions}>
-                    <Text style={styles.minorTimer}>
-                      {formatSeconds(bag.remainingSeconds)}
+                    <Text style={styles.minorSubstance} numberOfLines={1}>
+                      {bag.substance} • {bag.volumeMl} ml
                     </Text>
 
-                    <View style={{ flexDirection: 'row', gap: 8 }}>
-                      {bag.status !== 'active' && bag.level > 0 && (
-                        <Pressable
-                          onPress={() => handleSetBagActive(bag.id)}
-                          style={styles.smallActionBtn}
-                        >
-                          <Text style={styles.smallActionText}>Liberar</Text>
-                        </Pressable>
-                      )}
-                      {(bag.status === 'empty' || bag.status === 'low') && (
-                        <Pressable
-                          onPress={() => handleRefillBag(bag.id)}
+                    <View style={styles.progressRow}>
+                      <View style={styles.track}>
+                        <View
                           style={[
-                            styles.smallActionBtn,
-                            { backgroundColor: colors.primary },
+                            styles.fill,
+                            { width: `${bag.level}%`, backgroundColor: meta.bar },
                           ]}
-                        >
-                          <Text
+                        />
+                      </View>
+                      <Text style={styles.percentText}>{bag.level}%</Text>
+                    </View>
+
+                    <View style={styles.minorActions}>
+                      <Text style={styles.minorTimer}>
+                        {formatSeconds(bag.remainingSeconds)}
+                      </Text>
+
+                      <View style={{ flexDirection: 'row', gap: 8 }}>
+                        {bag.status !== 'active' && bag.level > 0 && (
+                          <Pressable
+                            onPress={() => handleSetBagActive(bag.id)}
+                            style={styles.smallActionBtn}
+                          >
+                            <Text style={styles.smallActionText}>Liberar</Text>
+                          </Pressable>
+                        )}
+                        {(bag.status === 'empty' || bag.status === 'low') && (
+                          <Pressable
+                            onPress={() => handleRefillBag(bag.id)}
                             style={[
-                              styles.smallActionText,
-                              { color: colors.white },
+                              styles.smallActionBtn,
+                              { backgroundColor: colors.primary },
                             ]}
                           >
-                            Repor
-                          </Text>
-                        </Pressable>
-                      )}
+                            <Text
+                              style={[
+                                styles.smallActionText,
+                                { color: colors.white },
+                              ]}
+                            >
+                              Repor
+                            </Text>
+                          </Pressable>
+                        )}
+                      </View>
                     </View>
-                  </View>
-                </Pressable>
-              );
-            })}
-          </View>
+                  </Pressable>
+                );
+              })}
+            </View>
+          )}
         </View>
 
-        {/* COLUNA DIREITA: Controle de Tempo de Descida & Comandos Arduino */}
         <View style={[styles.panel, isWide ? { flex: 1 } : { width: '100%' }]}>
           <View style={styles.panelHeader}>
             <View>
@@ -575,9 +598,8 @@ export default function BagsScreen({
             <Feather name="clock" size={20} color={colors.primary} />
           </View>
 
-          {/* Cronômetro Digital */}
           <View style={styles.clockBox}>
-            <Text style={styles.clockCaption}>TEMPO RESTANTE ESTIMADO</Text>
+            <Text style={styles.clockCaption}>TEMPO RESTANTE PROGRAMADO</Text>
             <Text style={styles.clockDigits}>
               {formatSeconds(selectedBag?.remainingSeconds ?? 0)}
             </Text>
@@ -586,37 +608,54 @@ export default function BagsScreen({
             </Text>
           </View>
 
-          {/* Atalhos Rápidos de Tempo */}
           <Text style={styles.controlLabel}>Duração rápida da descida</Text>
           <View style={styles.presetRow}>
             {[
-              { label: '30 min', h: '0', m: '30' },
-              { label: '1 hora', h: '1', m: '00' },
-              { label: '2 horas', h: '2', m: '00' },
-              { label: '4 horas', h: '4', m: '00' },
-            ].map((p) => (
-              <Pressable
-                key={p.label}
-                onPress={() => {
-                  setHoursInput(p.h);
-                  setMinutesInput(p.m);
-                }}
-                style={styles.presetBtn}
-              >
-                <Text style={styles.presetBtnText}>{p.label}</Text>
-              </Pressable>
-            ))}
+              { label: '30 min', h: '0', m: '30', total: 30 },
+              { label: '1 hora', h: '1', m: '00', total: 60 },
+              { label: '2 horas', h: '2', m: '00', total: 120 },
+              { label: '4 horas', h: '4', m: '00', total: 240 },
+            ].map((p) => {
+              const isPresetSelected = draftMinutes === p.total;
+              return (
+                <Pressable
+                  key={p.label}
+                  onPress={() => {
+                    setHoursInput(p.h);
+                    setMinutesInput(p.m);
+                    setJustApplied(false);
+                  }}
+                  style={[
+                    styles.presetBtn,
+                    isPresetSelected && styles.presetBtnSelected,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.presetBtnText,
+                      isPresetSelected && styles.presetBtnTextSelected,
+                    ]}
+                  >
+                    {p.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
           </View>
 
-          {/* Ajuste Manual Horas / Minutos */}
-          <Text style={styles.controlLabel}>Tempo personalizado (Horas : Minutos)</Text>
+          <Text style={styles.controlLabel}>
+            Tempo personalizado (Horas : Minutos)
+          </Text>
           <View style={styles.timeInputRow}>
             <View style={styles.timeField}>
               <TextInput
                 style={styles.timeInput}
                 keyboardType="numeric"
                 value={hoursInput}
-                onChangeText={setHoursInput}
+                onChangeText={(val) => {
+                  setHoursInput(val);
+                  setJustApplied(false);
+                }}
                 maxLength={2}
               />
               <Text style={styles.timeUnit}>horas</Text>
@@ -627,18 +666,39 @@ export default function BagsScreen({
                 style={styles.timeInput}
                 keyboardType="numeric"
                 value={minutesInput}
-                onChangeText={setMinutesInput}
+                onChangeText={(val) => {
+                  setMinutesInput(val);
+                  setJustApplied(false);
+                }}
                 maxLength={2}
               />
               <Text style={styles.timeUnit}>min</Text>
             </View>
 
-            <Pressable onPress={handleApplyTimer} style={styles.applyTimeBtn}>
-              <Text style={styles.applyTimeBtnText}>Aplicar</Text>
+            <Pressable
+              onPress={handleApplyTimer}
+              style={[
+                styles.applyTimeBtn,
+                hasPendingTime && styles.applyTimeBtnPending,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.applyTimeBtnText,
+                  hasPendingTime && styles.applyTimeBtnTextPending,
+                ]}
+              >
+                {justApplied ? 'Aplicado ✓' : 'Aplicar'}
+              </Text>
             </Pressable>
           </View>
 
-          {/* Limiar de Aviso ao Médico */}
+          {hasPendingTime && (
+            <Text style={styles.pendingHint}>
+              Clique em "Aplicar" para confirmar o novo tempo no cronômetro.
+            </Text>
+          )}
+
           <View style={styles.thresholdBox}>
             <View style={{ flex: 1 }}>
               <Text style={styles.thresholdTitle}>Aviso automático ao médico</Text>
@@ -648,14 +708,14 @@ export default function BagsScreen({
             </View>
             <View style={styles.thresholdControls}>
               <Pressable
-                onPress={() => setAlertThreshold((v) => Math.max(5, v - 5))}
+                onPress={() => onChangeAlertThreshold(Math.max(5, alertThreshold - 5))}
                 style={styles.stepBtn}
               >
                 <Text style={styles.stepBtnText}>-</Text>
               </Pressable>
               <Text style={styles.thresholdValue}>{alertThreshold}%</Text>
               <Pressable
-                onPress={() => setAlertThreshold((v) => Math.min(40, v + 5))}
+                onPress={() => onChangeAlertThreshold(Math.min(40, alertThreshold + 5))}
                 style={styles.stepBtn}
               >
                 <Text style={styles.stepBtnText}>+</Text>
@@ -663,9 +723,8 @@ export default function BagsScreen({
             </View>
           </View>
 
-          {/* Botão Principal de Comando MQTT / Arduino */}
           <Pressable
-            onPress={() => setIsRunning((r) => !r)}
+            onPress={onToggleRunning}
             style={[
               styles.commandBtn,
               !isRunning && { backgroundColor: colors.navy },
@@ -685,7 +744,6 @@ export default function BagsScreen({
         </View>
       </View>
 
-      {/* Modal: Adicionar Bolsa Menor */}
       <Modal
         visible={addModalVisible}
         transparent
@@ -769,7 +827,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.white,
   },
-
   deviceSelectorBar: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -802,11 +859,10 @@ const styles = StyleSheet.create({
   deviceChipTextActive: {
     color: colors.white,
   },
-
   alertBanner: {
-    backgroundColor: colors.dangerSoft,
+    backgroundColor: colors.dangerSoft || '#FEE2E2',
     borderWidth: 1,
-    borderColor: colors.danger,
+    borderColor: colors.danger || '#DC2626',
     borderRadius: 12,
     padding: 14,
   },
@@ -827,7 +883,7 @@ const styles = StyleSheet.create({
     fontFamily: typography.heading,
     fontSize: 14,
     fontWeight: '800',
-    color: colors.danger,
+    color: colors.danger || '#DC2626',
   },
   alertBannerDesc: {
     fontFamily: typography.body,
@@ -836,7 +892,6 @@ const styles = StyleSheet.create({
     color: colors.navy,
     marginTop: 2,
   },
-
   grid: { flexDirection: 'row', gap: 20, alignItems: 'flex-start' },
   panel: {
     backgroundColor: colors.card,
@@ -863,7 +918,6 @@ const styles = StyleSheet.create({
     color: colors.muted,
     marginTop: 2,
   },
-
   addMinorBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -879,9 +933,8 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
   },
-
   mainBagCard: {
-    backgroundColor: colors.primarySoft,
+    backgroundColor: colors.primarySoft || '#E0F2FE',
     borderRadius: 12,
     padding: 16,
     borderWidth: 2,
@@ -977,7 +1030,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.primary,
   },
-
   minorSectionTitle: {
     fontFamily: typography.heading,
     fontSize: 14,
@@ -985,6 +1037,13 @@ const styles = StyleSheet.create({
     color: colors.navy,
     marginTop: 18,
     marginBottom: 10,
+  },
+  emptyMinorText: {
+    fontFamily: typography.body,
+    fontSize: 13,
+    color: colors.muted,
+    textAlign: 'center',
+    paddingVertical: 20,
   },
   minorGrid: {
     flexDirection: 'row',
@@ -1005,6 +1064,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    gap: 6,
+  },
+  minorHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  deleteBtn: {
+    width: 26,
+    height: 26,
+    borderRadius: 8,
+    backgroundColor: colors.dangerSoft || '#FEE2E2',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   minorSlot: {
     fontFamily: typography.heading,
@@ -1033,7 +1106,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 8,
-    backgroundColor: colors.primarySoft,
+    backgroundColor: colors.primarySoft || '#E0F2FE',
   },
   smallActionText: {
     fontFamily: typography.body,
@@ -1041,7 +1114,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.primary,
   },
-
   clockBox: {
     backgroundColor: colors.navy,
     borderRadius: 12,
@@ -1054,7 +1126,7 @@ const styles = StyleSheet.create({
     fontFamily: typography.body,
     fontSize: 10,
     fontWeight: '700',
-    color: colors.dustyBlue,
+    color: (colors as any).dustyBlue || '#94A3B8',
     letterSpacing: 1.2,
   },
   clockDigits: {
@@ -1068,9 +1140,8 @@ const styles = StyleSheet.create({
     fontFamily: typography.body,
     fontSize: 12,
     fontWeight: '600',
-    color: colors.onlineIndicator,
+    color: (colors as any).onlineIndicator || '#34D399',
   },
-
   controlLabel: {
     fontFamily: typography.body,
     fontSize: 12,
@@ -1087,8 +1158,14 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 8,
     borderRadius: 8,
-    backgroundColor: colors.primarySoft,
+    backgroundColor: colors.primarySoft || '#E0F2FE',
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  presetBtnSelected: {
+    borderColor: colors.primary,
+    backgroundColor: colors.white,
   },
   presetBtnText: {
     fontFamily: typography.body,
@@ -1096,12 +1173,14 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.primary,
   },
-
+  presetBtnTextSelected: {
+    color: colors.navy,
+  },
   timeInputRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    marginBottom: 16,
+    marginBottom: 10,
   },
   timeField: {
     flexDirection: 'row',
@@ -1132,10 +1211,13 @@ const styles = StyleSheet.create({
   },
   applyTimeBtn: {
     flex: 1,
-    backgroundColor: colors.primarySoft,
+    backgroundColor: colors.primarySoft || '#E0F2FE',
     paddingVertical: 11,
     borderRadius: 10,
     alignItems: 'center',
+  },
+  applyTimeBtnPending: {
+    backgroundColor: colors.primary,
   },
   applyTimeBtnText: {
     fontFamily: typography.body,
@@ -1143,14 +1225,24 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.primary,
   },
-
+  applyTimeBtnTextPending: {
+    color: colors.white,
+  },
+  pendingHint: {
+    fontFamily: typography.body,
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.primary,
+    marginBottom: 14,
+  },
   thresholdBox: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    backgroundColor: colors.primarySoft,
+    backgroundColor: colors.primarySoft || '#E0F2FE',
     borderRadius: 10,
     padding: 12,
+    marginTop: 6,
     marginBottom: 16,
   },
   thresholdTitle: {
@@ -1191,7 +1283,6 @@ const styles = StyleSheet.create({
     width: 36,
     textAlign: 'center',
   },
-
   commandBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1207,7 +1298,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.white,
   },
-
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(11, 37, 69, 0.45)',
@@ -1262,7 +1352,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 10,
-    backgroundColor: colors.primarySoft,
+    backgroundColor: colors.primarySoft || '#E0F2FE',
   },
   cancelBtnText: {
     color: colors.muted,
