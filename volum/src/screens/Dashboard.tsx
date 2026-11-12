@@ -7,7 +7,9 @@ import Header from '../components/Header';
 import KpiCard from '../components/KpiCard';
 import DeviceListItem, { COLS } from '../components/DeviceListItem';
 import AlertCardItem from '../components/AlertCardItem';
-import { kpis, devices, alerts as initialAlerts } from '../mock/data';
+import DevicesScreen, { Device } from './DevicesScreen';
+import BagsScreen from './BagsScreen';
+import { kpis, devices as initialDevices, alerts as initialAlerts } from '../mock/data';
 import { colors, shadow, typography } from '../theme';
 
 function formatToday() {
@@ -27,6 +29,7 @@ export default function Dashboard() {
   const [menu, setMenu] = useState('overview');
   const [search, setSearch] = useState('');
   const [dismissed, setDismissed] = useState<string[]>([]);
+  const [deviceList, setDeviceList] = useState<Device[]>(initialDevices);
 
   const activeAlerts = useMemo(
     () => initialAlerts.filter((a) => !dismissed.includes(a.id)),
@@ -36,25 +39,38 @@ export default function Dashboard() {
 
   const filteredDevices = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return devices;
-    return devices.filter(
+    if (!q) return deviceList;
+    return deviceList.filter(
       (d) =>
         d.id.toLowerCase().includes(q) ||
         d.patient.toLowerCase().includes(q) ||
         d.bed.toLowerCase().includes(q)
     );
-  }, [search]);
+  }, [search, deviceList]);
 
-  // O KPI de alertas acompanha os alertas dispensados na tela.
-  const kpiList = kpis.map((k) =>
-    k.id === 'alerts'
-      ? {
-          ...k,
-          value: String(activeAlerts.length).padStart(2, '0'),
-          hint: criticalCount > 0 ? `${criticalCount} requer atenção` : 'Nenhum crítico',
-        }
-      : k
-  );
+  const handleAddDevice = (newDevice: Device) => {
+    setDeviceList((prev) => [newDevice, ...prev]);
+  };
+
+  // Os KPIs acompanham tanto os alertas dispensados quanto novos dispositivos cadastrados.
+  const kpiList = kpis.map((k) => {
+    if (k.id === 'alerts') {
+      return {
+        ...k,
+        value: String(activeAlerts.length).padStart(2, '0'),
+        hint: criticalCount > 0 ? `${criticalCount} requer atenção` : 'Nenhum crítico',
+      };
+    }
+    if (k.id === 'devices') {
+      const added = deviceList.length - initialDevices.length;
+      const currentNum = Number(k.value);
+      return {
+        ...k,
+        value: !Number.isNaN(currentNum) ? String(currentNum + added).padStart(2, '0') : k.value,
+      };
+    }
+    return k;
+  });
 
   const dismiss = (id: string) => setDismissed((prev) => [...prev, id]);
 
@@ -65,64 +81,79 @@ export default function Dashboard() {
       <ScrollView style={styles.main} contentContainerStyle={styles.mainContent}>
         <Header search={search} onChangeSearch={setSearch} />
 
-        <Text style={styles.date}>{formatToday()}</Text>
-        <Text style={styles.title}>Visão geral</Text>
-        <Text style={styles.subtitle}>Acompanhe a operação dos seus dispositivos em tempo real.</Text>
+        {menu === 'devices' ? (
+          <DevicesScreen
+            devices={deviceList}
+            onAddDevice={handleAddDevice}
+            searchQuery={search}
+            onSelectDevice={() => {
+              setMenu('bags');
+            }}
+          />
+        ) : (
+          <>
+            <Text style={styles.date}>{formatToday()}</Text>
+            <Text style={styles.title}>Visão geral</Text>
+            <Text style={styles.subtitle}>
+              Acompanhe a operação dos seus dispositivos em tempo real.
+            </Text>
 
-        {/* KPIs */}
-        <View style={styles.kpiRow}>
-          {kpiList.map((k) => (
-            <KpiCard
-              key={k.id}
-              label={k.label}
-              value={k.value}
-              hint={k.hint}
-              icon={k.icon}
-              tone={k.tone}
-            />
-          ))}
-        </View>
-
-        {/* Grid principal */}
-        <View style={[styles.grid, !isWide && { flexDirection: 'column' }]}>
-          <View style={[styles.panel, isWide ? { flex: 2 } : { width: '100%' }]}>
-            <View style={styles.panelHeader}>
-              <Text style={styles.panelTitle}>Dispositivos em operação</Text>
-              <Text style={styles.panelSub}>{filteredDevices.length} exibidos</Text>
+            {/* KPIs */}
+            <View style={styles.kpiRow}>
+              {kpiList.map((k) => (
+                <KpiCard
+                  key={k.id}
+                  label={k.label}
+                  value={k.value}
+                  hint={k.hint}
+                  icon={k.icon}
+                  tone={k.tone}
+                />
+              ))}
             </View>
 
-            <View style={styles.tableHead}>
-              <Text style={[styles.th, { flex: COLS.device }]}>Dispositivo / Paciente</Text>
-              <Text style={[styles.th, { flex: COLS.level }]}>Nível da bolsa</Text>
-              <Text style={[styles.th, { flex: COLS.flow }]}>Fluxo</Text>
-              <Text style={[styles.th, { flex: COLS.status }]}>Status</Text>
-            </View>
+            {/* Grid principal */}
+            <View style={[styles.grid, !isWide && { flexDirection: 'column' }]}>
+              <View style={[styles.panel, isWide ? { flex: 2 } : { width: '100%' }]}>
+                <View style={styles.panelHeader}>
+                  <Text style={styles.panelTitle}>Dispositivos em operação</Text>
+                  <Text style={styles.panelSub}>{filteredDevices.length} exibidos</Text>
+                </View>
 
-            {filteredDevices.length === 0 ? (
-              <Text style={styles.empty}>Nenhum dispositivo encontrado.</Text>
-            ) : (
-              filteredDevices.map((d) => <DeviceListItem key={d.id} device={d} />)
-            )}
-          </View>
+                <View style={styles.tableHead}>
+                  <Text style={[styles.th, { flex: COLS.device }]}>Dispositivo / Paciente</Text>
+                  <Text style={[styles.th, { flex: COLS.level }]}>Nível da bolsa</Text>
+                  <Text style={[styles.th, { flex: COLS.flow }]}>Fluxo</Text>
+                  <Text style={[styles.th, { flex: COLS.status }]}>Status</Text>
+                </View>
 
-          <View style={[styles.panel, isWide ? { flex: 1 } : { width: '100%' }]}>
-            <View style={styles.panelHeader}>
-              <Text style={styles.panelTitle}>Alertas recentes</Text>
-              <Text style={styles.panelSub}>{activeAlerts.length} ativos</Text>
-            </View>
-
-            {activeAlerts.length === 0 ? (
-              <View style={styles.emptyAlerts}>
-                <Feather name="check-circle" size={28} color={colors.primary} />
-                <Text style={styles.emptyAlertsText}>Nenhum alerta pendente</Text>
+                {filteredDevices.length === 0 ? (
+                  <Text style={styles.empty}>Nenhum dispositivo encontrado.</Text>
+                ) : (
+                  filteredDevices.map((d) => <DeviceListItem key={d.id} device={d} />)
+                )}
               </View>
-            ) : (
-              activeAlerts.map((a) => (
-                <AlertCardItem key={a.id} alert={a} onDismiss={dismiss} />
-              ))
-            )}
-          </View>
-        </View>
+
+              <View style={[styles.panel, isWide ? { flex: 1 } : { width: '100%' }]}>
+                <View style={styles.panelHeader}>
+                  <Text style={styles.panelTitle}>Alertas recentes</Text>
+                  <Text style={styles.panelSub}>{activeAlerts.length} ativos</Text>
+                </View>
+
+                {activeAlerts.length === 0 ? (
+                  <View style={styles.emptyAlerts}>
+                    <Feather name="check-circle" size={28} color={colors.primary} />
+                    <Text style={styles.emptyAlertsText}>Nenhum alerta pendente</Text>
+                  </View>
+                ) : (
+                  activeAlerts.map((a) => (
+                    <AlertCardItem key={a.id} alert={a} onDismiss={dismiss} />
+                  ))
+                )}
+              </View>
+            </View>
+          </>
+        )}
       </ScrollView>
     </View>
   );
