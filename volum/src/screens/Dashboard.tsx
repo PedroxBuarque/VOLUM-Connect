@@ -16,6 +16,7 @@ import DeviceListItem, { COLS } from '../components/DeviceListItem';
 import AlertCardItem from '../components/AlertCardItem';
 import DevicesScreen, { Device } from './DevicesScreen';
 import BagsScreen, { BagSlot, buildInitialBags } from './BagsScreen';
+import PatientsScreen from './PatientesScreen';
 import {
   kpis,
   devices as initialDevices,
@@ -311,13 +312,19 @@ export default function Dashboard() {
       <ScrollView style={styles.main} contentContainerStyle={styles.mainContent}>
         <Header search={search} onChangeSearch={setSearch} />
 
-        {menu === 'devices' ? (
+        {menu === 'patients' ? (
+          <PatientsScreen
+            devices={syncedDevices}
+            searchQuery={search}
+            onSelectDevice={(device) => openDeviceBags(device.id)}
+  />
+        ) : menu === 'devices' ? (
           <DevicesScreen
             devices={syncedDevices}
             onAddDevice={handleAddDevice}
             searchQuery={search}
             onSelectDevice={(device) => openDeviceBags(device.id)}
-          />
+  />
         ) : menu === 'bags' ? (
           <BagsScreen
             devices={syncedDevices}
